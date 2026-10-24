@@ -417,7 +417,8 @@ public class MainActivity extends Activity {
             dot.setSize(size, size);
             return dot;
         }, size, wallpaper(), this::showWallpaper, which -> {
-            getSharedPreferences(PREFS, 0).edit().putString("wallpaper", names.get(which)).apply();
+            getSharedPreferences(PREFS, 0).edit().putString("wallpaper", names.get(which))
+                    .putString("wallpaper:" + DESIGN_NAMES[design()], names.get(which)).apply();
             showWallpaper(which);
         });
     }
@@ -432,8 +433,16 @@ public class MainActivity extends Activity {
     private void showDesigns() {
         panel(Strings.t("Design"), Arrays.asList(DESIGN_NAMES), which -> {
             String[] d = DESIGNS[which];
-            getSharedPreferences(PREFS, 0).edit().putString("design", DESIGN_NAMES[which])
-                    .putString("wallpaper", d[0]).putString("tileStyle", d[1]).putString("labels", d[2]).putString("layout", d[3]).apply();
+            SharedPreferences sp = getSharedPreferences(PREFS, 0);
+            // Each design remembers its own wallpaper: keep the one in use for the design being left,
+            // and bring back the one saved for the design being opened (its default the first time).
+            String leaving = DESIGN_NAMES[design()];
+            String inUse = sp.getString("wallpaper", null);
+            String back = sp.getString("wallpaper:" + DESIGN_NAMES[which], d[0]);
+            SharedPreferences.Editor e = sp.edit();
+            if (inUse != null) e.putString("wallpaper:" + leaving, inUse);
+            e.putString("design", DESIGN_NAMES[which])
+                    .putString("wallpaper", back).putString("tileStyle", d[1]).putString("labels", d[2]).putString("layout", d[3]).apply();
             showWallpaper(wallpaper());
             buildTiles();
         });
