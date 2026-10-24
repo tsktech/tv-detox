@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
     private static final String PLAY_STORE = "com.android.vending";
     private static final String SETTINGS = "settings";
     private static final String ADD = "add";
-    private static final String[] EDIT_ITEMS = {"Move", "Replace", "Remove from home", "Uninstall"};
+    private static final String[] EDIT_ITEMS = {"Move", "Replace", "Remove from home", "App info", "Uninstall"};
     private static final String[] EDIT_ITEMS_SYSTEM = {"Move", "Replace", "Remove from home", "App info"};
     private static final int PER_ROW = 6, MAX_INPUTS = 4;
 
@@ -481,12 +481,12 @@ public class MainActivity extends Activity {
         dock = "dock".equals(layout);
         // Spotlight and dock show an app's name only under the focused tile; the logo says the rest.
         if (dock || "spotlight".equals(layout)) labelMode = "auto";
-        perRow = dock ? 7 : PER_ROW;
+        perRow = dock || spot ? 7 : PER_ROW;
         PackageManager pm = getPackageManager();
         int m = px(MARGIN), g = px(GAP);
         int w = (getResources().getDisplayMetrics().widthPixels - 2 * m - g * (perRow - 1)) / perRow;
         int h = w * 9 / 16;
-        rowStep = dock ? h + px(54) : px(ROW_STEP) + (spot ? px(20) : 0);
+        rowStep = dock ? h + px(54) : px(ROW_STEP);
         // Dock puts the clock in the middle; the other layouts keep it at the left.
         FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) clockBox.getLayoutParams();
         boolean mid = "dock".equals(layout);
@@ -548,7 +548,7 @@ public class MainActivity extends Activity {
         List<TvInputInfo> inputs = hdmiInputs();
         int room = perRow - 2 - (store ? 1 : 0);
         if (inputs.size() > room) inputs = inputs.subList(0, room);
-        int bm = m + (dock ? (perRow - ((store ? 1 : 0) + inputs.size() + 2)) * (w + g) / 2 : 0); // dock centres the bottom row
+        int bm = m + (dock || spot ? (perRow - ((store ? 1 : 0) + inputs.size() + 2)) * (w + g) / 2 : 0); // dock centres the bottom row
         if (store)
             addTile(root, PLAY_STORE, "Play Store", null, LineIcon.PLAY, null, bm + col++ * (w + g), bottomTop, w, h);
         for (TvInputInfo in : inputs)
@@ -1076,9 +1076,10 @@ public class MainActivity extends Activity {
         dropdown(tile(key), user ? EDIT_ITEMS : EDIT_ITEMS_SYSTEM, which -> {
             if (which == 0) startMove(key);
             else if (which == 1) showAddMenu(index);
-            else if (which == 3) {
+            else if (which == 3 || which == 4) {
+                // App info has Force stop, to restart an app; Uninstall (user apps only) is last.
                 Uri pkg = Uri.parse("package:" + key);
-                try { startActivity(user ? new Intent(Intent.ACTION_DELETE, pkg)
+                try { startActivity(which == 4 ? new Intent(Intent.ACTION_DELETE, pkg)
                         : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)); }
                 catch (Exception ignored) {}
             } else {
@@ -1136,7 +1137,7 @@ public class MainActivity extends Activity {
     // Where app number i sits in the grid.
     private int gridX(int i) {
         int x = px(MARGIN) + (i % perRow) * (tileW + px(GAP));
-        if (dock) { // centre a short row
+        if (dock || spot) { // centre a short row
             int inRow = Math.min(perRow, appCount - (i / perRow) * perRow);
             x += (perRow - inRow) * (tileW + px(GAP)) / 2;
         }
