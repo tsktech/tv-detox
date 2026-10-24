@@ -94,7 +94,16 @@ public class MainActivity extends Activity {
     private static final int ICON_TOP = 76, ICON_BUTTON = 72, ICON_SIZE = 40, ICON_GAP = 12; // level with the date
 
     // The Settings tile opens a small menu: the home screen's own settings, then the TV's.
-    private static final String[] SETTINGS_ITEMS = {"Wallpaper", "Brightness", "TV settings"};
+    private static final String[] SETTINGS_ITEMS = {"Design", "Wallpaper", "Brightness", "TV settings"};
+    // Designs: a whole look in one pick. Each sets the wallpaper (by name; Dusk if there is no
+    // Picture), the tile style (glass, clear or solid) and when labels show (auto, always or focus).
+    private static final String[] DESIGN_NAMES = {"Shore", "Clear", "Bold"};
+    private static final String[][] DESIGNS = {
+        {"Picture", "glass", "auto"},
+        {"Midnight", "clear", "focus"},
+        {"Ocean", "solid", "always"},
+    };
+    private String tileStyle = "glass", labelMode = "auto"; // read from the saved design by buildTiles
     // Android TV 11 and later (Google TV too) has no Display page, but its "Display & Sound" page holds Picture.
     private static final String[] TV_DISPLAY_SOUND = {"com.android.tv.settings",
             "com.android.tv.settings.device.displaysound.DisplaySoundActivity"};
@@ -403,6 +412,23 @@ public class MainActivity extends Activity {
         });
     }
 
+    // The saved design, as an index into DESIGNS (Shore if none is saved).
+    private int design() {
+        String saved = getSharedPreferences(PREFS, 0).getString("design", null);
+        return Math.max(0, Arrays.asList(DESIGN_NAMES).indexOf(saved));
+    }
+
+    // Picking a design saves it with its wallpaper, tile style and labels, then redraws the home screen.
+    private void showDesigns() {
+        panel(Strings.t("Design"), Arrays.asList(DESIGN_NAMES), which -> {
+            String[] d = DESIGNS[which];
+            getSharedPreferences(PREFS, 0).edit().putString("design", DESIGN_NAMES[which])
+                    .putString("wallpaper", d[0]).putString("tileStyle", d[1]).putString("labels", d[2]).apply();
+            showWallpaper(wallpaper());
+            buildTiles();
+        });
+    }
+
     // A glow colour made solid over the base, three times as strong, so a small dot shows it.
     private static int glow(int glow, int base) {
         float a = Math.min(1f, 3 * (glow >>> 24) / 255f);
@@ -436,6 +462,9 @@ public class MainActivity extends Activity {
         movingKey = null;
         moveHint.setVisibility(View.GONE);
 
+        SharedPreferences sp = getSharedPreferences(PREFS, 0);
+        tileStyle = sp.getString("tileStyle", "glass");
+        labelMode = sp.getString("labels", "auto");
         PackageManager pm = getPackageManager();
         int m = px(MARGIN), g = px(GAP);
         int w = (getResources().getDisplayMetrics().widthPixels - 2 * m - g * (PER_ROW - 1)) / PER_ROW;
@@ -512,8 +541,10 @@ public class MainActivity extends Activity {
     private void addTile(ViewGroup parent, final String key, String label, Drawable banner, int[] lineIcon, Drawable appIcon,
                          int x, int y, int w, int h) {
         FrameLayout card = new FrameLayout(this);
+        TextView label_ = null; // the label inside a glass tile, if this tile has one
         final GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(px(RADIUS));
+        final int radius = px("clear".equals(tileStyle) ? 6 : "solid".equals(tileStyle) ? 44 : RADIUS);
+        bg.setCornerRadius(radius);
         if (banner != null) {
             bg.setColor(0xFF1E1A1C);
             ImageView iv = new ImageView(this);
@@ -521,8 +552,8 @@ public class MainActivity extends Activity {
             card.addView(iv, new FrameLayout.LayoutParams(-1, -1));
         } else {
             // Quiet "glass" tile: icon above label.
-            bg.setColor(0x13FFFFFF);
-            bg.setStroke(Math.max(1, px(2)), 0x17FFFFFF);
+            bg.setColor(tileFill(false));
+            if (!"clear".equals(tileStyle)) bg.setStroke(Math.max(1, px(2)), "solid".equals(tileStyle) ? 0x40FFFFFF : 0x17FFFFFF);
             LinearLayout inner = new LinearLayout(this);
             inner.setOrientation(LinearLayout.VERTICAL);
             inner.setGravity(Gravity.CENTER);
@@ -532,6 +563,8 @@ public class MainActivity extends Activity {
             else if (appIcon != null) iv.setImageDrawable(fit(appIcon, size, size));
             inner.addView(iv, new LinearLayout.LayoutParams(size, size));
             TextView t = text(px(24), 0xE0FFFFFF, regular);
+            label_ = t;
+            if ("focus".equals(labelMode)) t.setVisibility(View.INVISIBLE);
             t.setText(label);
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -542,6 +575,17 @@ public class MainActivity extends Activity {
             inner.addView(t, lp);
             card.addView(inner, new FrameLayout.LayoutParams(-1, -1));
         }
+        final TextView inLabel = label_;
+        // Bold: a thick light border on every tile, drawn over the banner picture.
+        if ("solid".equals(tileStyle)) {
+            GradientDrawable ring = new GradientDrawable();
+            ring.setCornerRadius(radius);
+            ring.setStroke(px(5), 0xCCFFFFFF);
+            card.setForeground(ring);
+        }
+        // Clear: banners fade back until they are focused.
+        final boolean fade = banner != null && "clear".equals(tileStyle);
+        if (fade) card.setAlpha(0.55f);
         card.setBackground(bg);
         card.setClipToOutline(true);
         card.setFocusable(true);
@@ -552,16 +596,19 @@ public class MainActivity extends Activity {
         if (caption != null) {
             caption.setText(label);
             caption.setGravity(Gravity.CENTER_HORIZONTAL);
-            caption.setVisibility(View.INVISIBLE);
+            caption.setVisibility("always".equals(labelMode) ? View.VISIBLE : View.INVISIBLE);
         }
 
         final boolean glass = banner == null;
         card.setOnFocusChangeListener((v, has) -> {
             if (has) focusedKey = key;
-            if (glass) bg.setColor(has ? 0x38FFFFFF : 0x13FFFFFF);
-            v.animate().scaleX(has ? 1.1f : 1f).scaleY(has ? 1.1f : 1f).translationZ(has ? px(26) : 0)
+            if (glass) bg.setColor(tileFill(has));
+            if (inLabel != null && "focus".equals(labelMode)) inLabel.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
+            float pop = "solid".equals(tileStyle) ? 1.2f : 1.1f;
+            if (fade) v.setAlpha(has ? 1f : 0.55f);
+            v.animate().scaleX(has ? pop : 1f).scaleY(has ? pop : 1f).translationZ(has ? px(26) : 0)
                     .setDuration(140).withLayer().start();
-            if (caption != null) caption.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
+            if (caption != null) caption.setVisibility(has || "always".equals(labelMode) ? View.VISIBLE : View.INVISIBLE);
         });
         final boolean editable = rowApps.contains(key);
         card.setOnClickListener(v -> open(key));
@@ -607,6 +654,13 @@ public class MainActivity extends Activity {
         tiles.add(card);
     }
 
+    // The fill of a glass tile for the saved tile style, resting or focused.
+    private int tileFill(boolean focused) {
+        if ("clear".equals(tileStyle)) return focused ? 0x28FFFFFF : 0x00FFFFFF;
+        if ("solid".equals(tileStyle)) return focused ? 0x66FFFFFF : 0x33FFFFFF;
+        return focused ? 0x38FFFFFF : 0x13FFFFFF;
+    }
+
     // An icon on its own, no tile or label: a glass circle shows behind it only while it's focused.
     private ImageView addIcon(final String key, String label, Drawable icon, int x) {
         int b = px(ICON_BUTTON), size = px(ICON_SIZE);
@@ -642,8 +696,9 @@ public class MainActivity extends Activity {
             return;
         } else if (SETTINGS.equals(key)) {
             dropdown(tile(SETTINGS), SETTINGS_ITEMS, which -> {
-                if (which == 0) showWallpapers();
-                else if (which == 1) openBrightness();
+                if (which == 0) showDesigns();
+                else if (which == 1) showWallpapers();
+                else if (which == 2) openBrightness();
                 else openTvSettings();
             });
             return;
