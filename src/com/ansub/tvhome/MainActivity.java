@@ -97,12 +97,22 @@ public class MainActivity extends Activity {
     private static final String[] SETTINGS_ITEMS = {"Design", "Wallpaper", "Brightness", "TV settings"};
     // Designs: a whole look in one pick. Each sets the wallpaper (by name; Dusk if there is no
     // Picture), the tile style (glass, clear or solid) and when labels show (auto, always or focus).
-    private static final String[] DESIGN_NAMES = {"Shore", "Clear", "Bold"};
+    // A design also sets the layout: grid (6 a row), spotlight (same size as grid; the focused tile grows big) or dock (7 small
+    // tiles a row, centred in a bar at the bottom, clock in the middle).
+    private static final String[] DESIGN_NAMES = {"Shore", "Clear", "Bold", "Spotlight", "Dock"};
     private static final String[][] DESIGNS = {
-        {"Picture", "glass", "auto"},
-        {"Midnight", "clear", "focus"},
-        {"Ocean", "solid", "always"},
+        {"Picture", "glass", "auto", "grid"},
+        {"Midnight", "clear", "focus", "grid"},
+        {"Ocean", "solid", "always", "grid"},
+        {"Plum", "glass", "auto", "spotlight"},
+        {"Graphite", "glass", "auto", "dock"},
     };
+    private boolean dock; // dock layout: clock in the middle, centred rows in a bar at the bottom
+    private int appCount; // apps shown, for centring the last row of the dock
+    private View dockBar;
+    private boolean spot; // spotlight layout: the focused tile grows big, the rest fade back
+    private int perRow = PER_ROW, rowStep; // set by buildTiles for the saved layout
+    private LinearLayout clockBox;
     private String tileStyle = "glass", labelMode = "auto"; // read from the saved design by buildTiles
     // Android TV 11 and later (Google TV too) has no Display page, but its "Display & Sound" page holds Picture.
     private static final String[] TV_DISPLAY_SOUND = {"com.android.tv.settings",
@@ -186,7 +196,7 @@ public class MainActivity extends Activity {
         root.setClipChildren(false);
         scroller.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        LinearLayout clock = new LinearLayout(this);
+        LinearLayout clock = clockBox = new LinearLayout(this);
         clock.setOrientation(LinearLayout.VERTICAL);
         shownLocale = java.util.Locale.getDefault();
         String day = Strings.datePattern();
@@ -423,7 +433,7 @@ public class MainActivity extends Activity {
         panel(Strings.t("Design"), Arrays.asList(DESIGN_NAMES), which -> {
             String[] d = DESIGNS[which];
             getSharedPreferences(PREFS, 0).edit().putString("design", DESIGN_NAMES[which])
-                    .putString("wallpaper", d[0]).putString("tileStyle", d[1]).putString("labels", d[2]).apply();
+                    .putString("wallpaper", d[0]).putString("tileStyle", d[1]).putString("labels", d[2]).putString("layout", d[3]).apply();
             showWallpaper(wallpaper());
             buildTiles();
         });
@@ -458,6 +468,7 @@ public class MainActivity extends Activity {
             ((ViewGroup) wrap.getParent()).removeView(wrap);
         }
         tiles.clear();
+        if (dockBar != null) { root.removeView(dockBar); dockBar = null; }
         rowApps.clear();
         movingKey = null;
         moveHint.setVisibility(View.GONE);
@@ -465,10 +476,24 @@ public class MainActivity extends Activity {
         SharedPreferences sp = getSharedPreferences(PREFS, 0);
         tileStyle = sp.getString("tileStyle", "glass");
         labelMode = sp.getString("labels", "auto");
+        String layout = sp.getString("layout", "grid");
+        spot = "spotlight".equals(layout);
+        dock = "dock".equals(layout);
+        // Spotlight and dock show an app's name only under the focused tile; the logo says the rest.
+        if (dock || "spotlight".equals(layout)) labelMode = "auto";
+        perRow = dock ? 7 : PER_ROW;
         PackageManager pm = getPackageManager();
         int m = px(MARGIN), g = px(GAP);
-        int w = (getResources().getDisplayMetrics().widthPixels - 2 * m - g * (PER_ROW - 1)) / PER_ROW;
+        int w = (getResources().getDisplayMetrics().widthPixels - 2 * m - g * (perRow - 1)) / perRow;
         int h = w * 9 / 16;
+        rowStep = dock ? h + px(54) : px(ROW_STEP) + (spot ? px(20) : 0);
+        // Dock puts the clock in the middle; the other layouts keep it at the left.
+        FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) clockBox.getLayoutParams();
+        boolean mid = "dock".equals(layout);
+        cp.width = mid ? -1 : -2;
+        cp.leftMargin = mid ? 0 : m;
+        clockBox.setGravity(mid ? Gravity.CENTER_HORIZONTAL : Gravity.START);
+        clockBox.setLayoutParams(cp);
         tileW = w;
         tileH = h;
 
@@ -477,9 +502,25 @@ public class MainActivity extends Activity {
         // the bottom row still fit on screen; past that the page scrolls.
         int launchable = 0;
         for (String pkg : apps) if (launchIntent(pm, pkg) != null) launchable++;
-        int rows = Math.max(1, (launchable + PER_ROW - 1) / PER_ROW);
-        gridTop = Math.max(px(GRID_MIN_TOP), px(ROW1_TOP) - (rows - 1) * px(ROW_STEP));
-        int bottomTop = gridTop + rows * px(ROW_STEP);
+        int rows = Math.max(1, (launchable + perRow - 1) / perRow);
+        appCount = launchable;
+        gridTop = Math.max(px(GRID_MIN_TOP), px(ROW1_TOP) - (rows - 1) * rowStep);
+        int bottomTop = gridTop + rows * rowStep;
+        if (dock) {
+            // Sit at the bottom of the screen, never up into the clock.
+            bottomTop = getResources().getDisplayMetrics().heightPixels - px(100) - h;
+            gridTop = Math.max(px(340), bottomTop - rows * rowStep - px(16)); // a gap above the bottom row
+            // One quiet glass bar behind all the rows, added first so the tiles draw over it.
+            dockBar = new View(this);
+            GradientDrawable barBg = new GradientDrawable();
+            barBg.setCornerRadius(px(40));
+            barBg.setColor(0x1CFFFFFF);
+            barBg.setStroke(Math.max(1, px(2)), 0x1FFFFFFF);
+            dockBar.setBackground(barBg);
+            int pad = px(36);
+            int top = gridTop - pad, bottom = bottomTop + h + pad;
+            root.addView(dockBar, 0, at(m - pad, top, getResources().getDisplayMetrics().widthPixels - 2 * (m - pad), bottom - top));
+        }
         ((FrameLayout.LayoutParams) moveHint.getLayoutParams()).topMargin = gridTop - px(64);
         root.setMinimumHeight(bottomTop + h + px(MARGIN));
 
@@ -505,14 +546,15 @@ public class MainActivity extends Activity {
         int col = 0;
         boolean store = !apps.contains(PLAY_STORE) && launchIntent(pm, PLAY_STORE) != null;
         List<TvInputInfo> inputs = hdmiInputs();
-        int room = PER_ROW - 2 - (store ? 1 : 0);
+        int room = perRow - 2 - (store ? 1 : 0);
         if (inputs.size() > room) inputs = inputs.subList(0, room);
+        int bm = m + (dock ? (perRow - ((store ? 1 : 0) + inputs.size() + 2)) * (w + g) / 2 : 0); // dock centres the bottom row
         if (store)
-            addTile(root, PLAY_STORE, "Play Store", null, LineIcon.PLAY, null, m + col++ * (w + g), bottomTop, w, h);
+            addTile(root, PLAY_STORE, "Play Store", null, LineIcon.PLAY, null, bm + col++ * (w + g), bottomTop, w, h);
         for (TvInputInfo in : inputs)
-            addTile(root, in.getId(), inputLabel(in), null, LineIcon.HDMI, null, m + col++ * (w + g), bottomTop, w, h);
-        addTile(root, SETTINGS, Strings.t("Settings"), null, LineIcon.SETTINGS, null, m + col++ * (w + g), bottomTop, w, h);
-        addTile(root, ADD, Strings.t("Add app"), null, LineIcon.PLUS, null, m + col * (w + g), bottomTop, w, h);
+            addTile(root, in.getId(), inputLabel(in), null, LineIcon.HDMI, null, bm + col++ * (w + g), bottomTop, w, h);
+        addTile(root, SETTINGS, Strings.t("Settings"), null, LineIcon.SETTINGS, null, bm + col++ * (w + g), bottomTop, w, h);
+        addTile(root, ADD, Strings.t("Add app"), null, LineIcon.PLUS, null, bm + col * (w + g), bottomTop, w, h);
 
         // Plain icons at the top right, level with the date: any settings shortcuts picked, then the
         // network icon. Added last, so the first app keeps first focus; Up from the apps reaches them.
@@ -584,8 +626,9 @@ public class MainActivity extends Activity {
             card.setForeground(ring);
         }
         // Clear: banners fade back until they are focused.
-        final boolean fade = banner != null && "clear".equals(tileStyle);
-        if (fade) card.setAlpha(0.55f);
+        final boolean fade = spot || (banner != null && "clear".equals(tileStyle));
+        final float rest = spot ? 0.6f : 0.55f;
+        if (fade) card.setAlpha(rest);
         card.setBackground(bg);
         card.setClipToOutline(true);
         card.setFocusable(true);
@@ -604,8 +647,9 @@ public class MainActivity extends Activity {
             if (has) focusedKey = key;
             if (glass) bg.setColor(tileFill(has));
             if (inLabel != null && "focus".equals(labelMode)) inLabel.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
-            float pop = "solid".equals(tileStyle) ? 1.2f : 1.1f;
-            if (fade) v.setAlpha(has ? 1f : 0.55f);
+            float pop = spot ? 1.25f : "solid".equals(tileStyle) ? 1.2f : 1.1f;
+            if (fade) v.setAlpha(has ? 1f : rest);
+            if (spot) ((View) v.getParent()).setTranslationZ(has ? px(40) : 0); // draw over its neighbours
             v.animate().scaleX(has ? pop : 1f).scaleY(has ? pop : 1f).translationZ(has ? px(26) : 0)
                     .setDuration(140).withLayer().start();
             if (caption != null) caption.setVisibility(has || "always".equals(labelMode) ? View.VISIBLE : View.INVISIBLE);
@@ -647,7 +691,7 @@ public class MainActivity extends Activity {
         wrap.addView(card, new FrameLayout.LayoutParams(w, h));
         if (caption != null) {
             FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(w, -2);
-            cp.topMargin = h + px(22);
+            cp.topMargin = h + px(spot ? 40 : 22);
             wrap.addView(caption, cp);
         }
         parent.addView(wrap, at(x, y, w, -2));
@@ -1091,11 +1135,16 @@ public class MainActivity extends Activity {
 
     // Where app number i sits in the grid.
     private int gridX(int i) {
-        return px(MARGIN) + (i % PER_ROW) * (tileW + px(GAP));
+        int x = px(MARGIN) + (i % perRow) * (tileW + px(GAP));
+        if (dock) { // centre a short row
+            int inRow = Math.min(perRow, appCount - (i / perRow) * perRow);
+            x += (perRow - inRow) * (tileW + px(GAP)) / 2;
+        }
+        return x;
     }
 
     private int gridY(int i) {
-        return gridTop + (i / PER_ROW) * px(ROW_STEP);
+        return gridTop + (i / perRow) * rowStep;
     }
 
     private View tile(String key) {
@@ -1118,7 +1167,7 @@ public class MainActivity extends Activity {
 
     private boolean moveKey(String key, int code, boolean ok, boolean down) {
         int step = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1
-                : code == KeyEvent.KEYCODE_DPAD_UP ? -PER_ROW : code == KeyEvent.KEYCODE_DPAD_DOWN ? PER_ROW : 0;
+                : code == KeyEvent.KEYCODE_DPAD_UP ? -perRow : code == KeyEvent.KEYCODE_DPAD_DOWN ? perRow : 0;
         if (step != 0) {
             int from = rowApps.indexOf(key), to = from + step;
             if (down && to >= 0 && to < rowApps.size()) {
