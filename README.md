@@ -381,10 +381,32 @@ Use the remote. Hold **OK** on an app (or press **Menu**) to:
 - **Move** it: use the arrows to slide it to a new spot, then press **OK** to finish.
 - **Replace** it: pick another app to take its place.
 - **Remove** it from the home screen. The app stays installed, and you can add it back any time.
-- **Uninstall** it, for apps you installed yourself. The TV asks you to confirm first.
-- **App info**, for apps that came with the TV. They can't be uninstalled, but from there you can turn them off.
+- **App info**, for every app. It opens Android's page for the app. From there you can **Force stop** an app to restart it, or turn off an app that came with the TV.
+- **Uninstall** it, for apps you installed yourself. It is last in the list. The TV asks you to confirm first.
 
 To add an app, pick the **Add app** tile in the bottom row. Add as many apps as you like: they wrap into rows of six, and the page scrolls once there are more than twelve. Your changes are kept until you run `install.sh` with a new app list.
+
+</details>
+
+<details>
+<summary><b>Can I change how the home screen looks?</b></summary>
+<br>
+
+Yes. Pick the **Settings** tile, then **Design**. A design is a whole look in one pick: it sets the layout, the tile style and when app names show. There are five:
+
+| Design | What it looks like |
+| --- | --- |
+| **Shore** | The default. Six tiles a row, glass tiles for the plain ones, the name under the focused app. |
+| **Clear** | Sharp corners. App tiles fade back until you focus one. Plain tiles have no fill. |
+| **Bold** | Very round corners, a thick light border on every tile, and a bigger pop when focused. App names always show. |
+| **Spotlight** | Seven small tiles a row. The tile you focus grows and sits on top of its neighbours, the rest fade back. Short rows are centred. |
+| **Dock** | The date and clock are in the middle. All apps sit in one glass bar at the bottom, with the rows centred. |
+
+In **Spotlight** and **Dock** an app's name shows only under the focused tile, because the logo says the rest. The HDMI, Settings and Add app tiles always show their names.
+
+**Each design remembers its own wallpaper.** Pick a wallpaper (see below) while a design is on, switch to another design, and the first one's wallpaper is back when you return. A design you have not changed uses its own default wallpaper.
+
+**Moving, replacing and removing apps** works the same in every design.
 
 </details>
 
@@ -392,7 +414,7 @@ To add an app, pick the **Add app** tile in the bottom row. Add as many apps as 
 <summary><b>Can I change the background?</b></summary>
 <br>
 
-Yes. Pick the **Settings** tile, then **Wallpaper**. (**TV settings**, right under it, opens the TV's own settings.) There are fourteen gradients. Dark: Dusk (the default), Midnight, Plum, Forest, Graphite, Ocean and Ember. Bright: Sunset, Lagoon, Aurora, Coral, Iris, Meadow and Gold. The background changes as you move through the list; press **OK** to keep one, or **Back** to leave it as it was. The gradients are colours only, so every one is just as fast and uses the same memory.
+Yes. Pick the **Settings** tile, then **Wallpaper**. (**Design** is above it. **Brightness** and **TV settings** are below it and open the TV's own settings pages.) The wallpaper is saved for the design that is on, so each design keeps its own. There are fourteen gradients. Dark: Dusk (the default), Midnight, Plum, Forest, Graphite, Ocean and Ember. Bright: Sunset, Lagoon, Aurora, Coral, Iris, Meadow and Gold. The background changes as you move through the list; press **OK** to keep one, or **Back** to leave it as it was. The gradients are colours only, so every one is just as fast and uses the same memory.
 
 **Want your own picture?** See [Can I use my own picture as the wallpaper?](#own-picture) below.
 
